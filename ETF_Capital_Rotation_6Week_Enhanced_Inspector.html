@@ -1,0 +1,185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ETF Capital Rotation Explorer</title>
+<style>
+*{box-sizing:border-box}
+body{font-family:Arial,Helvetica,sans-serif;margin:0;background:#f7f9fc;color:#172033}
+.app{max-width:1700px;margin:auto;padding:16px}
+h1{margin:0 0 4px;font-size:27px}.sub{color:#64748b;margin-bottom:12px}
+.topbar{display:flex;flex-wrap:wrap;gap:12px;align-items:end;margin-bottom:12px}
+label{font-size:11px;color:#64748b;font-weight:700;display:block;margin-bottom:5px}
+select{min-height:40px;padding:8px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff;font-size:14px}
+.market-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:12px}
+.market-card{background:#fff;border:1px solid #dbe2ea;border-radius:10px;padding:12px}
+.market-card h3{margin:0 0 8px;font-size:15px}
+.market-big{font-size:24px;font-weight:700}
+.market-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:8px;font-size:12px}
+.metric{background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:7px}
+.metric b{display:block;font-size:14px;margin-top:2px}
+.up{color:#08783e}.down{color:#b42318}.muted{color:#64748b}
+.main{display:grid;grid-template-columns:minmax(0,1fr) 390px;gap:12px;align-items:start}
+.chart-card,.inspector{background:#fff;border:1px solid #dbe2ea;border-radius:10px}
+.chart-card{padding:10px;overflow-x:auto}
+.inspector{padding:14px;position:sticky;top:8px;min-height:520px}
+.note{background:#f8fafc;border:1px solid #dbe2ea;border-radius:8px;padding:9px 11px;font-size:12px;line-height:1.45;margin-bottom:10px}
+svg{display:block;min-width:1180px;width:100%;height:auto}
+.ribbon{opacity:.28;stroke:#fff;stroke-width:.6;cursor:pointer}.ribbon:hover,.ribbon.active{opacity:.82}.ribbon.dim{opacity:.05}
+.node-rect{stroke:#fff;stroke-width:1}
+.node-title{font-weight:700;font-size:12px;fill:#172033}
+.node-amt{font-weight:700;font-size:13px;fill:#172033}
+.ticker{font-size:12px;fill:#0b57d0;text-decoration:underline;cursor:pointer;font-weight:700}
+.flow-label{font-size:10px;font-weight:700;fill:#334155;pointer-events:none}
+.side-label{fill:#64748b;font-size:11px;font-weight:700}
+.inspector h2{margin:0 0 4px;font-size:22px}.desc{font-size:13px;line-height:1.45;color:#475569;margin-bottom:12px}
+.statgrid{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}.stat{background:#f8fafc;border:1px solid #e2e8f0;border-radius:7px;padding:8px}.stat span{font-size:10px;color:#64748b;text-transform:uppercase}.stat b{display:block;margin-top:3px;font-size:15px}
+.holdings{width:100%;border-collapse:collapse;font-size:12px}.holdings th,.holdings td{padding:7px 5px;border-bottom:1px solid #e5e7eb;text-align:left}.holdings th:last-child,.holdings td:last-child{text-align:right}
+.legend{display:flex;flex-wrap:wrap;gap:8px 12px;font-size:11px;color:#475569;margin:8px 0}.legend span{display:inline-flex;align-items:center;gap:5px}.dot{width:11px;height:11px;border-radius:3px}
+@media(max-width:1100px){.main{grid-template-columns:1fr}.inspector{position:static}.market-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="app">
+<h1>ETF Capital Rotation — 6-Week Explorer</h1>
+<div class="sub">Week-by-week source → destination flows, ETF profiles, and equity ETF market-value context</div>
+
+<div class="topbar">
+  <div><label for="weekSel">Select week</label><select id="weekSel"></select></div>
+</div>
+
+<div id="marketPanel" class="market-grid"></div>
+
+<div class="note">
+<b>Market-value definition:</b> the U.S. and International figures below are <b>U.S.-listed equity ETF AUM</b> from ETF.com, not the capitalization of every public company. Weekly AUM change reflects both investor flows and market-price/valuation movement. The “valuation/other effect” is approximately AUM change minus net ETF flow. The Nov. 16–18 snapshot is partial and therefore less comparable.
+</div>
+
+<div class="legend">
+<span><i class="dot" style="background:#7c3aed"></i>Tech / semis</span>
+<span><i class="dot" style="background:#2563eb"></i>Broad / growth</span>
+<span><i class="dot" style="background:#d97706"></i>Gold / commodities</span>
+<span><i class="dot" style="background:#b91c1c"></i>Bonds / credit donor</span>
+<span><i class="dot" style="background:#0f766e"></i>Value / defensive</span>
+<span><i class="dot" style="background:#6b7280"></i>New cash / external funding</span>
+<span><i class="dot" style="background:#16a34a"></i>Destination</span>
+</div>
+
+<div class="main">
+  <div>
+    <div id="weekNote" class="note"></div>
+    <div class="chart-card"><svg id="svg" viewBox="0 0 1300 900"></svg></div>
+    <div class="note" style="margin-top:10px">
+      Ribbon dollars are modeled allocations to visualize plausible rotation; ETF flow data does not trace buyer/seller counterparties. Node dollar values are observed or aggregated named creations/redemptions used in this analysis. New Cash / External Funding represents residual funding needed to reconcile receiving flows.
+    </div>
+  </div>
+  <aside class="inspector">
+    <div class="muted" style="font-size:11px;text-transform:uppercase;font-weight:700">ETF inspector</div>
+    <h2 id="etfTitle">Click an ETF ticker</h2>
+    <div id="etfName" class="muted" style="font-size:13px;margin-bottom:8px"></div>
+    <div id="etfDesc" class="desc">Click any blue underlined ETF symbol on the Sankey to view holdings/exposures, description, YTD return and Sharpe ratio.</div>
+    <div class="statgrid">
+      <div class="stat"><span>YTD return</span><b id="ytd">—</b></div>
+      <div class="stat"><span>Sharpe ratio</span><b id="sharpe">—</b></div>
+    </div>
+    <div style="font-weight:700;margin-bottom:5px">Top holdings / exposures</div>
+    <table class="holdings"><thead><tr><th>Symbol</th><th>Holding / exposure</th><th>Weight</th></tr></thead><tbody id="holdingsBody"></tbody></table>
+    <div class="muted" style="font-size:11px;margin-top:10px">Holdings and performance snapshots have different source dates; they are shown as directional research context, not live quotes.</div>
+  </aside>
+</div>
+</div>
+
+<script>
+const DATA={"weeks": [{"label": "Oct 12\u201316", "note": "Chip dip buying during a weak stock week.", "sources": [{"name": "Long Treasuries", "tickers": ["TLT"], "amount": 2.97, "color": "#b91c1c"}], "dest": [{"name": "Broad U.S. Equity", "tickers": ["VOO", "SPY"], "amount": 7.97}, {"name": "Semiconductors / AI", "tickers": ["SMH"], "amount": 6.14}, {"name": "International / EM", "tickers": ["EMXC"], "amount": 1.66}, {"name": "Municipal Bonds", "tickers": ["MUB"], "amount": 1.51}], "map": [["Long Treasuries", "Broad U.S. Equity", 1.5], ["Long Treasuries", "Semiconductors / AI", 1.0], ["Long Treasuries", "International / EM", 0.47]]}, {"label": "Oct 19\u201323", "note": "Semiconductor dip-buying dominated while small caps and gold lost assets.", "sources": [{"name": "Small Caps", "tickers": ["IWM"], "amount": 2.43, "color": "#7c3aed"}, {"name": "Gold", "tickers": ["GLD"], "amount": 2.3, "color": "#d97706"}, {"name": "Broad U.S. Equity", "tickers": ["VOO"], "amount": 2.05, "color": "#2563eb"}], "dest": [{"name": "Semiconductors / AI", "tickers": ["SMH"], "amount": 11.0}, {"name": "Broad / Growth Equity", "tickers": ["VOO", "QQQ"], "amount": 10.83}, {"name": "Emerging Markets ex-China", "tickers": ["EMXC"], "amount": 1.46}, {"name": "Municipal Bonds", "tickers": ["MUB"], "amount": 2.3}, {"name": "Investment-Grade Credit", "tickers": ["LQD"], "amount": 1.3}], "map": [["Small Caps", "Broad / Growth Equity", 2.0], ["Gold", "Broad / Growth Equity", 1.5], ["Broad U.S. Equity", "Semiconductors / AI", 2.05]]}, {"label": "Oct 26\u201330", "note": "Rotation broadened toward broad equity, dividends, credit and intermediate duration.", "sources": [{"name": "New Cash / External Funding", "tickers": [], "amount": 13.62, "color": "#6b7280"}], "dest": [{"name": "Broad U.S. Equity", "tickers": ["VOO"], "amount": 6.12}, {"name": "Investment-Grade Credit", "tickers": ["LQD"], "amount": 1.7}, {"name": "Dividend / Value", "tickers": ["CGDV"], "amount": 1.55}, {"name": "Broad U.S. Market", "tickers": ["VTI"], "amount": 1.29}], "map": [["New Cash / External Funding", "Broad U.S. Equity", 6.12], ["New Cash / External Funding", "Investment-Grade Credit", 1.7], ["New Cash / External Funding", "Dividend / Value", 1.55], ["New Cash / External Funding", "Broad U.S. Market", 1.29]]}, {"label": "Nov 2\u20136", "note": "A severe tech selloff was met by broad-equity and growth dip buying.", "sources": [{"name": "Value / Dividend", "tickers": ["CGDV"], "amount": 2.57, "color": "#0f766e"}, {"name": "New Cash / External Funding", "tickers": [], "amount": 9.21, "color": "#6b7280"}], "dest": [{"name": "Broad U.S. Equity", "tickers": ["SPY", "VOO"], "amount": 9.19}, {"name": "Nasdaq / Growth", "tickers": ["QQQ"], "amount": 3.94}, {"name": "Semiconductors / AI", "tickers": ["SMH"], "amount": 2.65}], "map": [["Value / Dividend", "Broad U.S. Equity", 2.2], ["New Cash / External Funding", "Broad U.S. Equity", 6.99], ["New Cash / External Funding", "Nasdaq / Growth", 1.5], ["New Cash / External Funding", "Semiconductors / AI", 0.72]]}, {"label": "Nov 9\u201313", "note": "Huge broad-equity inflows while semiconductors, Treasuries and crypto were major donors.", "sources": [{"name": "Semiconductors / AI", "tickers": ["SMH"], "amount": 6.29, "color": "#7c3aed"}, {"name": "Treasuries", "tickers": ["TLT"], "amount": 6.82, "color": "#b91c1c"}, {"name": "New Cash / External Funding", "tickers": [], "amount": 32.8, "color": "#6b7280"}], "dest": [{"name": "Broad / Growth Equity", "tickers": ["QQQ", "VOO"], "amount": 23.1}, {"name": "Quality / Broad Market", "tickers": ["VTI"], "amount": 12.3}, {"name": "International Equity", "tickers": ["VXUS"], "amount": 10.51}], "map": [["Semiconductors / AI", "Broad / Growth Equity", 5.0], ["Treasuries", "Broad / Growth Equity", 5.0], ["Semiconductors / AI", "Quality / Broad Market", 1.0], ["Treasuries", "International Equity", 1.5], ["New Cash / External Funding", "Broad / Growth Equity", 13.1], ["New Cash / External Funding", "Quality / Broad Market", 11.3], ["New Cash / External Funding", "International Equity", 9.01]]}, {"label": "Nov 16\u201318*", "note": "Partial period: technology, gold and lower-quality credit were donors; innovation, value, broad equity and quality bonds received capital.", "sources": [{"name": "Nasdaq / Technology", "tickers": ["QQQ"], "amount": 1.45, "color": "#2563eb"}, {"name": "Corporate Credit", "tickers": ["LQD"], "amount": 0.92, "color": "#b91c1c"}, {"name": "Gold", "tickers": ["GLD"], "amount": 0.57, "color": "#d97706"}, {"name": "New Cash / External Funding", "tickers": [], "amount": 12.95, "color": "#6b7280"}], "dest": [{"name": "Innovation", "tickers": ["ARKK"], "amount": 6.71}, {"name": "Dividend / Value", "tickers": ["CGDV"], "amount": 3.34}, {"name": "Semiconductors / AI", "tickers": ["SMH"], "amount": 2.89}, {"name": "Broad U.S. Equity", "tickers": ["SPY", "VOO"], "amount": 3.81}, {"name": "Higher-Quality Bonds", "tickers": ["LQD", "TLT"], "amount": 0.74}], "map": [["Nasdaq / Technology", "Innovation", 0.9], ["Nasdaq / Technology", "Broad U.S. Equity", 0.55], ["Corporate Credit", "Higher-Quality Bonds", 0.7], ["Gold", "Broad U.S. Equity", 0.45], ["New Cash / External Funding", "Innovation", 5.81], ["New Cash / External Funding", "Dividend / Value", 3.34], ["New Cash / External Funding", "Semiconductors / AI", 2.89], ["New Cash / External Funding", "Broad U.S. Equity", 2.81], ["New Cash / External Funding", "Higher-Quality Bonds", 0.04]]}], "market": [{"label": "Oct 12\u201316", "us_aum": 9.91891059, "intl_aum": 2.91953842, "us_flow": 20.72249, "intl_flow": 12.59493, "us_change": null, "intl_change": null, "us_val_effect": null, "intl_val_effect": null}, {"label": "Oct 19\u201323", "us_aum": 9.86556754, "intl_aum": 2.89046848, "us_flow": 20.80202, "intl_flow": 7.13004, "us_change": -53.34, "intl_change": -29.07, "us_val_effect": -74.14, "intl_val_effect": -36.2}, {"label": "Oct 26\u201330", "us_aum": 9.99175917, "intl_aum": 2.9341542, "us_flow": 13.5, "intl_flow": 6.5, "us_change": 126.19, "intl_change": 43.69, "us_val_effect": 112.69, "intl_val_effect": 37.19}, {"label": "Nov 2\u20136", "us_aum": 9.82432849, "intl_aum": 2.87975056, "us_flow": 10.27179, "intl_flow": -0.81286, "us_change": -167.43, "intl_change": -54.4, "us_val_effect": -177.7, "intl_val_effect": -53.59}, {"label": "Nov 9\u201313", "us_aum": 9.92300679, "intl_aum": 2.89862061, "us_flow": 54.2258, "intl_flow": 10.51044, "us_change": 98.68, "intl_change": 18.87, "us_val_effect": 44.45, "intl_val_effect": 8.36}, {"label": "Nov 16\u201318*", "us_aum": 9.61747398, "intl_aum": 2.81362877, "us_flow": 5.75557, "intl_flow": 3.47049, "us_change": -305.53, "intl_change": -84.99, "us_val_effect": -311.29, "intl_val_effect": -88.46}], "profiles": {"VOO": {"name": "Vanguard S&P 500 ETF", "desc": "Tracks the S&P 500 and provides broad large-cap U.S. equity exposure.", "ytd": "2.2% (11/20 snapshot)", "sharpe": "Not embedded", "holdings": [["AAPL", "Apple", 7.7], ["NVDA", "NVIDIA", 7.58], ["MSFT", "Microsoft", 5.93], ["AMZN", "Amazon", 3.61], ["GOOGL", "Alphabet A", 2.52]]}, "SPY": {"name": "State Street SPDR S&P 500 ETF Trust", "desc": "Large-cap U.S. equity ETF tracking the S&P 500.", "ytd": "1.9% (11/20 snapshot)", "sharpe": "~1.2 (3Y, source snapshot)", "holdings": [["AAPL", "Apple", 8.13], ["MSFT", "Microsoft", 5.96], ["NVDA", "NVIDIA", 5.78], ["AMZN", "Amazon", 4.16], ["AVGO", "Broadcom", 2.66]]}, "QQQ": {"name": "Invesco QQQ Trust", "desc": "Tracks the Nasdaq-100, with a heavy tilt toward technology and growth-oriented mega caps.", "ytd": "5.41% (11/20)", "sharpe": "1.07 (3Y snapshot)", "holdings": [["AAPL", "Apple", 8.13], ["NVDA", "NVIDIA", 8.02], ["MSFT", "Microsoft", 6.2], ["AMZN", "Amazon", 4.36], ["MU", "Micron", 4.28]]}, "SMH": {"name": "VanEck Semiconductor ETF", "desc": "Concentrated semiconductor ETF tracking large global chip designers and manufacturers.", "ytd": "Not embedded", "sharpe": "1.33 (3Y snapshot)", "holdings": [["NVDA", "NVIDIA", 16.83], ["TSM", "Taiwan Semiconductor", 9.7], ["AVGO", "Broadcom", 6.98], ["TXN", "Texas Instruments", 6.33], ["AMD", "Advanced Micro Devices", 6.05]]}, "IWM": {"name": "iShares Russell 2000 ETF", "desc": "Tracks U.S. small-cap stocks through the Russell 2000 index.", "ytd": "Not embedded", "sharpe": "0.72 (3Y snapshot)", "holdings": [["GKOS", "Glaukos", 0.48], ["FROG", "JFrog", 0.42], ["BTSG", "BrightSpring Health Services", "\u2014"], ["UMBF", "UMB Financial", "\u2014"], ["MOG.A", "Moog Class A", "\u2014"]]}, "EMXC": {"name": "iShares MSCI Emerging Markets ex China ETF", "desc": "Emerging-market equity exposure excluding China, with large weights in Taiwan, Korea and India.", "ytd": "24.1% (10/31)", "sharpe": "Not embedded", "holdings": [["TSM", "Taiwan Semiconductor", 19.26], ["005930", "Samsung Electronics", 8.01], ["000660", "SK hynix", 5.39], ["2454", "MediaTek", 1.93], ["HDFCBANK", "HDFC Bank", 1.15]]}, "VXUS": {"name": "Vanguard Total International Stock ETF", "desc": "Broad developed- and emerging-market equity exposure outside the United States.", "ytd": "0.7% (11/20 snapshot)", "sharpe": "1.0 (3Y snapshot)", "holdings": [["TSM", "Taiwan Semiconductor", "~2.5"], ["ASML", "ASML", "~1.4"], ["SAP", "SAP", "~1.1"], ["TCEHY", "Tencent", "~1.0"], ["NESN", "Nestl\u00e9", "~0.9"]]}, "VTI": {"name": "Vanguard Total Stock Market ETF", "desc": "Broad U.S. equity exposure spanning large-, mid- and small-cap stocks.", "ytd": "11.6% (11/13 snapshot)", "sharpe": "Not embedded", "holdings": [["NVDA", "NVIDIA", 7.1], ["AAPL", "Apple", 6.6], ["MSFT", "Microsoft", 5.2], ["AMZN", "Amazon", 3.3], ["GOOGL", "Alphabet A", "~2.4"]]}, "TLT": {"name": "iShares 20+ Year Treasury Bond ETF", "desc": "Long-duration U.S. Treasury exposure with very high sensitivity to changes in long-term yields.", "ytd": "Not embedded", "sharpe": "-0.28 (3Y snapshot)", "holdings": [["UST 4.625% 2054", "U.S. Treasury", 4.04], ["UST 4.75% 2055", "U.S. Treasury", 4.0], ["UST 5.00% 2056", "U.S. Treasury", 3.98], ["UST 4.75% 2053", "U.S. Treasury", 3.94], ["UST 4.75%", "U.S. Treasury", 3.89]]}, "LQD": {"name": "iShares iBoxx $ Investment Grade Corporate Bond ETF", "desc": "Broad U.S. dollar investment-grade corporate bond exposure.", "ytd": "2.72% (11/19)", "sharpe": "Not embedded", "holdings": [["Cash", "BlackRock Treasury cash fund", 0.52], ["BUD Bond", "Anheuser-Busch bond", 0.18], ["SpaceX Bond", "Space Exploration Technologies bond", 0.18], ["Skydance Bond", "Skydance 7.05%", 0.17], ["CVS Bond", "CVS Health 5.05%", 0.16]]}, "MUB": {"name": "iShares National Muni Bond ETF", "desc": "Investment-grade U.S. municipal bond exposure, generally used for tax-exempt income.", "ytd": "-0.7% (11/20 snapshot)", "sharpe": "0.0 (3Y snapshot)", "holdings": [["Municipal bonds", "Diversified national muni portfolio", "\u2014"], ["State/local issuers", "Investment-grade tax-exempt debt", "\u2014"]]}, "GLD": {"name": "SPDR Gold Shares", "desc": "Physically backed gold ETF designed to reflect the price of gold bullion less expenses.", "ytd": "-18.5% (11/20 snapshot)", "sharpe": "1.32 (3Y snapshot)", "holdings": [["Gold", "Physical gold bullion", 100.0]]}, "ARKK": {"name": "ARK Innovation ETF", "desc": "Actively managed high-growth innovation ETF focused on disruptive technologies.", "ytd": "Latest sources conflict; see note", "sharpe": "Not embedded", "holdings": [["TSLA", "Tesla", 12.48], ["SPCX", "Space Exploration Technologies", 9.2], ["TEM", "Tempus AI", 5.6], ["CRCL", "Circle Internet Group", 4.08], ["COIN", "Coinbase", 3.63]]}, "CGDV": {"name": "Capital Group Dividend Value ETF", "desc": "Actively managed large-value equity ETF emphasizing dividend-paying established companies.", "ytd": "6.44% (11/19)", "sharpe": "Not embedded", "holdings": [["MSFT", "Microsoft", 6.39], ["NVDA", "NVIDIA", 4.81], ["AVGO", "Broadcom", 4.75], ["META", "Meta Platforms", 3.92]]}}};
+const weekSel=document.getElementById('weekSel');
+const svg=document.getElementById('svg');
+const NS='http://www.w3.org/2000/svg';
+
+DATA.weeks.forEach((w,i)=>{const o=document.createElement('option');o.value=i;o.textContent=w.label;weekSel.appendChild(o)});
+weekSel.value=DATA.weeks.length-1;
+
+function moneyB(v){if(v===null||v===undefined)return '—';const a=Math.abs(v);return (v<0?'-':'')+'$'+a.toFixed(2)+'B'}
+function moneyT(v){return '$'+v.toFixed(2)+'T'}
+function el(tag,attrs={}){const e=document.createElementNS(NS,tag);Object.entries(attrs).forEach(([k,v])=>e.setAttribute(k,v));return e}
+function text(x,y,s,cls,anchor='start'){const t=el('text',{x,y,class:cls,'text-anchor':anchor});t.textContent=s;svg.appendChild(t);return t}
+function lineWrap(x,y,s,max,cls,anchor='start'){
+ const words=s.split(' ');let lines=[],cur='';
+ for(const w of words){const test=(cur+' '+w).trim();if(test.length>max&&cur){lines.push(cur);cur=w}else cur=test}if(cur)lines.push(cur);
+ lines.slice(0,2).forEach((ln,i)=>text(x,y+i*15,ln,cls,anchor));
+ return lines.length;
+}
+function showETF(ticker){
+ const p=DATA.profiles[ticker]; if(!p)return;
+ document.getElementById('etfTitle').textContent=ticker;
+ document.getElementById('etfName').textContent=p.name;
+ document.getElementById('etfDesc').textContent=p.desc;
+ document.getElementById('ytd').textContent=p.ytd;
+ document.getElementById('sharpe').textContent=p.sharpe;
+ const tb=document.getElementById('holdingsBody');tb.innerHTML='';
+ p.holdings.forEach(h=>{const tr=document.createElement('tr');tr.innerHTML='<td><b>'+h[0]+'</b></td><td>'+h[1]+'</td><td>'+h[2]+(typeof h[2]==='number'?'%':'')+'</td>';tb.appendChild(tr)});
+}
+function renderMarket(i){
+ const m=DATA.market[i],p=document.getElementById('marketPanel');
+ const cls=x=>x===null?'':x>=0?'up':'down';
+ function card(name,aum,chg,flow,val){
+  return `<div class="market-card"><h3>${name}</h3><div class="market-big">${moneyT(aum)}</div>
+    <div class="market-row">
+      <div class="metric"><span class="muted">AUM change</span><b class="${cls(chg)}">${chg===null?'—':moneyB(chg)}</b></div>
+      <div class="metric"><span class="muted">Net ETF flow</span><b class="${cls(flow)}">${moneyB(flow)}</b></div>
+      <div class="metric"><span class="muted">Valuation / other</span><b class="${cls(val)}">${val===null?'—':moneyB(val)}</b></div>
+    </div></div>`;
+ }
+ p.innerHTML=card('U.S. equity ETF market value',m.us_aum,m.us_change,m.us_flow,m.us_val_effect)+card('International equity ETF market value',m.intl_aum,m.intl_change,m.intl_flow,m.intl_val_effect);
+}
+function render(i){
+ renderMarket(i);
+ const w=DATA.weeks[i];
+ document.getElementById('weekNote').innerHTML='<b>'+w.label+':</b> '+w.note;
+ while(svg.firstChild)svg.removeChild(svg.firstChild);
+
+ const H=900,lx=285,rx=920,nw=24,gap=24,top=65,bottom=55;
+ const src=w.sources,dst=w.dest;
+ const st=src.reduce((a,b)=>a+b.amount,0),dt=dst.reduce((a,b)=>a+b.amount,0);
+ const scale=Math.min((H-top-bottom-gap*(src.length-1))/Math.max(st,1),(H-top-bottom-gap*(dst.length-1))/Math.max(dt,1));
+ function layout(arr,x){const th=arr.reduce((a,b)=>a+b.amount*scale,0)+gap*(arr.length-1);let y=(H-th)/2;const out={};arr.forEach(n=>{out[n.name]={...n,x,y,h:Math.max(n.amount*scale,18)};y+=Math.max(n.amount*scale,18)+gap});return out}
+ const SL=layout(src,lx),DL=layout(dst,rx),so={},to={};src.forEach(s=>so[s.name]=0);dst.forEach(d=>to[d.name]=0);
+
+ text(40,35,'SOURCE / DONOR','side-label'); text(1130,35,'DESTINATION / RECEIVER','side-label');
+
+ const paths=[];
+ w.map.forEach((m,idx)=>{
+   const [sn,dn,amt]=m,s=SL[sn],d=DL[dn]; if(!s||!d)return;
+   const thick=Math.max(amt*scale,3),sy=s.y+so[sn],dy=d.y+to[dn];so[sn]+=thick;to[dn]+=thick;
+   const x1=lx+nw,x2=rx,c1=x1+(x2-x1)*.43,c2=x1+(x2-x1)*.57;
+   const dd=`M${x1},${sy} C${c1},${sy} ${c2},${dy} ${x2},${dy} L${x2},${dy+thick} C${c2},${dy+thick} ${c1},${sy+thick} ${x1},${sy+thick} Z`;
+   const color=s.color||'#64748b';const p=el('path',{d:dd,fill:color,class:'ribbon'});svg.appendChild(p);paths.push(p);
+   p.addEventListener('click',()=>{paths.forEach(q=>{q.classList.toggle('active',q===p);q.classList.toggle('dim',q!==p)})});
+   if(thick>12)text((x1+x2)/2,(sy+dy)/2+thick/2,moneyB(amt),'flow-label','middle');
+ });
+
+ function drawNode(n,o,left){
+   const g=el('g',{});svg.appendChild(g);
+   g.appendChild(el('rect',{x:o.x,y:o.y,width:nw,height:o.h,rx:5,fill:left?(n.color||'#64748b'):'#16a34a',class:'node-rect'}));
+   const tx=left?o.x-14:o.x+nw+14,anchor=left?'end':'start';
+   const y=o.y+5;
+   lineWrap(tx,y+11,n.name,23,'node-title',anchor);
+   text(tx,y+42,(left?'OUT ':'IN ')+moneyB(n.amount),'node-amt',anchor);
+   let ty=y+62;
+   if(n.tickers&&n.tickers.length){
+     n.tickers.forEach(tk=>{
+       const t=text(tx,ty,tk,'ticker',anchor);
+       t.addEventListener('click',(ev)=>{ev.stopPropagation();showETF(tk)});
+       ty+=16;
+     });
+   } else {
+     text(tx,ty,'External cash / residual','muted',anchor);
+   }
+ }
+ src.forEach(n=>drawNode(n,SL[n.name],true)); dst.forEach(n=>drawNode(n,DL[n.name],false));
+}
+weekSel.addEventListener('change',()=>render(Number(weekSel.value)));
+render(Number(weekSel.value));
+showETF('VOO');
+</script>
+</body>
+</html>

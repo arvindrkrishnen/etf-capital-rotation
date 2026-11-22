@@ -1,6 +1,7 @@
 # ChatGPT ETF Capital Rotation Playbook
 
 This repository explains how to recreate the **6-week ETF Capital Rotation Explorer** in ChatGPT.
+<img width="952" height="825" alt="image" src="https://github.com/user-attachments/assets/9ae20087-2495-451a-b49b-89112632f81e" />
 
 The final output is a standalone Microsoft Edge-compatible HTML dashboard with:
 
